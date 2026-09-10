@@ -1,5 +1,6 @@
 import { router } from "expo-router";
 import { useState } from "react";
+
 import {
   Alert,
   StyleSheet,
@@ -18,7 +19,10 @@ export default function LoginScreen() {
 
   const handleLogin = async () => {
     if (!email.trim() || !password.trim()) {
-      Alert.alert("Faltan datos", "Escribe tu correo y contraseña.");
+      Alert.alert(
+        "Falta un poquito",
+        "Parece que falta algo. Revisa tus datos e inténtalo de nuevo.",
+      );
       return;
     }
 
@@ -31,17 +35,21 @@ export default function LoginScreen() {
       });
 
       if (error) {
-        Alert.alert("No pudimos iniciar sesión", error.message);
+        Alert.alert(
+          "Algo no salió bien",
+          "Hmm... parece que algo no salió bien. Revisa tus datos e inténtalo de nuevo.",
+        );
         return;
       }
-
-      Alert.alert("Bienvenido", "Sesión iniciada correctamente.");
 
       router.replace("/chat");
     } catch (error) {
       console.log("Error al iniciar sesión:", error);
 
-      Alert.alert("Error", "Ocurrió un problema al iniciar sesión.");
+      Alert.alert(
+        "Ups...",
+        "Algo no salió como esperábamos. Inténtalo de nuevo en un momento.",
+      );
     } finally {
       setLoading(false);
     }
@@ -50,7 +58,6 @@ export default function LoginScreen() {
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Iniciar sesión</Text>
-
       <Text style={styles.subtitle}>Qué bueno verte de nuevo.</Text>
 
       <TextInput
@@ -96,41 +103,43 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#071A2B",
-    paddingHorizontal: 30,
+    backgroundColor: "#FCFCFC",
+    paddingHorizontal: 24,
     justifyContent: "center",
   },
 
   title: {
-    fontSize: 34,
+    fontSize: 32,
     fontWeight: "700",
-    color: "#FFFFFF",
-    marginBottom: 10,
+    color: "#172033",
+    marginBottom: 8,
   },
 
   subtitle: {
-    fontSize: 17,
-    color: "#8DE0C4",
-    marginBottom: 35,
+    fontSize: 16,
+    color: "#6B7C93",
+    marginBottom: 28,
   },
 
   input: {
-    height: 55,
-    backgroundColor: "#123B52",
-    borderRadius: 12,
-    paddingHorizontal: 18,
-    color: "#FFFFFF",
+    height: 54,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    borderRadius: 16,
+    paddingHorizontal: 16,
+    color: "#172033",
     fontSize: 16,
-    marginBottom: 15,
+    marginBottom: 14,
   },
 
   button: {
-    height: 55,
-    borderRadius: 28,
-    backgroundColor: "#8DE0C4",
+    height: 54,
+    borderRadius: 27,
+    backgroundColor: "#4169E1",
     alignItems: "center",
     justifyContent: "center",
-    marginTop: 10,
+    marginTop: 8,
   },
 
   buttonDisabled: {
@@ -138,18 +147,19 @@ const styles = StyleSheet.create({
   },
 
   buttonText: {
-    fontSize: 17,
+    color: "#FFFFFF",
+    fontSize: 16,
     fontWeight: "600",
-    color: "#071A2B",
   },
 
   backButton: {
+    marginTop: 18,
     alignItems: "center",
-    marginTop: 25,
   },
 
   backText: {
-    fontSize: 16,
-    color: "#8DE0C4",
+    color: "#4682B4",
+    fontSize: 15,
+    fontWeight: "500",
   },
 });

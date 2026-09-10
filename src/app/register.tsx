@@ -118,41 +118,43 @@ export default function RegisterScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#071A2B",
-    paddingHorizontal: 30,
+    backgroundColor: "#FCFCFC",
+    paddingHorizontal: 24,
     justifyContent: "center",
   },
 
   title: {
-    fontSize: 34,
+    fontSize: 32,
     fontWeight: "700",
-    color: "#FFFFFF",
-    marginBottom: 10,
+    color: "#172033",
+    marginBottom: 8,
   },
 
   subtitle: {
-    fontSize: 17,
-    color: "#8DE0C4",
-    marginBottom: 35,
+    fontSize: 16,
+    color: "#6B7C93",
+    marginBottom: 28,
   },
 
   input: {
-    height: 55,
-    backgroundColor: "#123B52",
-    borderRadius: 12,
-    paddingHorizontal: 18,
-    color: "#FFFFFF",
+    height: 54,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    borderRadius: 16,
+    paddingHorizontal: 16,
+    color: "#172033",
     fontSize: 16,
-    marginBottom: 15,
+    marginBottom: 14,
   },
 
   button: {
-    height: 55,
-    borderRadius: 28,
-    backgroundColor: "#8DE0C4",
+    height: 54,
+    borderRadius: 27,
+    backgroundColor: "#4169E1",
     alignItems: "center",
     justifyContent: "center",
-    marginTop: 10,
+    marginTop: 8,
   },
 
   buttonDisabled: {
@@ -160,18 +162,19 @@ const styles = StyleSheet.create({
   },
 
   buttonText: {
-    fontSize: 17,
+    color: "#FFFFFF",
+    fontSize: 16,
     fontWeight: "600",
-    color: "#071A2B",
   },
 
   backButton: {
+    marginTop: 18,
     alignItems: "center",
-    marginTop: 25,
   },
 
   backText: {
-    fontSize: 16,
-    color: "#8DE0C4",
+    color: "#4682B4",
+    fontSize: 15,
+    fontWeight: "500",
   },
 });
