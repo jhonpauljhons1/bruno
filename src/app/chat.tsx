@@ -1,7 +1,5 @@
-import { useRef, useState } from "react";
-
 import { router } from "expo-router";
-
+import { useEffect, useRef, useState } from "react";
 import {
   Animated,
   FlatList,
@@ -13,9 +11,8 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-
 import { SafeAreaView } from "react-native-safe-area-context";
-
+import Svg, { Defs, Ellipse, RadialGradient, Stop } from "react-native-svg";
 import { supabase } from "../../utils/supabase";
 
 type Message = {
@@ -28,8 +25,37 @@ export default function ChatScreen() {
   const [message, setMessage] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
   const [menuVisible, setMenuVisible] = useState(false);
+  const [isThinking, setIsThinking] = useState(false);
 
   const menuAnimation = useRef(new Animated.Value(0)).current;
+  const thinkingAnimation = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (isThinking) {
+      const breathing = Animated.loop(
+        Animated.sequence([
+          Animated.timing(thinkingAnimation, {
+            toValue: 1,
+            duration: 900,
+            useNativeDriver: true,
+          }),
+          Animated.timing(thinkingAnimation, {
+            toValue: 0,
+            duration: 900,
+            useNativeDriver: true,
+          }),
+        ]),
+      );
+
+      breathing.start();
+
+      return () => {
+        breathing.stop();
+      };
+    }
+
+    thinkingAnimation.stopAnimation();
+    thinkingAnimation.setValue(0);
+  }, [isThinking, thinkingAnimation]);
 
   const handleBrunoLightPress = () => {
     if (menuVisible) {
@@ -65,7 +91,7 @@ export default function ChatScreen() {
     router.replace("/");
   };
 
-  const sendMessage = () => {
+  const sendMessage = async () => {
     const cleanMessage = message.trim();
 
     if (!cleanMessage) return;
@@ -78,6 +104,48 @@ export default function ChatScreen() {
 
     setMessages((current) => [...current, newMessage]);
     setMessage("");
+
+    // Bruno empieza a pensar
+    setIsThinking(true);
+
+    try {
+      const response = await fetch("http://192.168.1.74:3000/api/chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          message: cleanMessage,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data?.error || "Error al hablar con Bruno.");
+      }
+
+      const brunoMessage: Message = {
+        id: `${Date.now()}-bruno`,
+        text: data.reply,
+        sender: "bruno",
+      };
+
+      setMessages((current) => [...current, brunoMessage]);
+    } catch (error) {
+      console.log("Error al hablar con Bruno:", error);
+
+      const errorMessage: Message = {
+        id: `${Date.now()}-error`,
+        text: "Hmm... tuve un problema para responder. Inténtalo otra vez en un momento.",
+        sender: "bruno",
+      };
+
+      setMessages((current) => [...current, errorMessage]);
+    } finally {
+      // Bruno terminó de pensar
+      setIsThinking(false);
+    }
   };
 
   return (
@@ -94,6 +162,64 @@ export default function ChatScreen() {
             accessibilityRole="button"
             accessibilityLabel="Opciones de Bruno"
           >
+            <Animated.View
+              style={[
+                styles.brunoHalo,
+                {
+                  opacity: isThinking
+                    ? thinkingAnimation.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [0.45, 1],
+                      })
+                    : 0.55,
+
+                  transform: [
+                    {
+                      scaleX: isThinking
+                        ? thinkingAnimation.interpolate({
+                            inputRange: [0, 1],
+                            outputRange: [0.9, 1.12],
+                          })
+                        : 1,
+                    },
+                    {
+                      scaleY: isThinking
+                        ? thinkingAnimation.interpolate({
+                            inputRange: [0, 1],
+                            outputRange: [0.92, 1.05],
+                          })
+                        : 1,
+                    },
+                  ],
+                },
+              ]}
+            >
+              <Svg width="100%" height="100%" viewBox="0 0 120 30">
+                <Defs>
+                  <RadialGradient
+                    id="brunoGlow"
+                    cx="50%"
+                    cy="50%"
+                    rx="50%"
+                    ry="50%"
+                  >
+                    <Stop offset="0%" stopColor="#4169E1" stopOpacity="0.34" />
+                    <Stop offset="35%" stopColor="#4169E1" stopOpacity="0.18" />
+                    <Stop offset="70%" stopColor="#4169E1" stopOpacity="0.07" />
+                    <Stop offset="100%" stopColor="#4169E1" stopOpacity="0" />
+                  </RadialGradient>
+                </Defs>
+
+                <Ellipse
+                  cx="60"
+                  cy="15"
+                  rx="58"
+                  ry="13"
+                  fill="url(#brunoGlow)"
+                />
+              </Svg>
+            </Animated.View>
+
             <View style={styles.brunoLightCore} />
           </TouchableOpacity>
 
@@ -188,36 +314,39 @@ const styles = StyleSheet.create({
   },
 
   header: {
-    height: 52,
+    height: 34,
     alignItems: "center",
     justifyContent: "center",
     zIndex: 20,
   },
 
   brunoLight: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: "#E8EEFF",
+    width: 74,
+    height: 24,
     alignItems: "center",
     justifyContent: "center",
+    backgroundColor: "transparent",
+  },
 
+  brunoHalo: {
+    position: "absolute",
+    width: 110,
+    height: 28,
+  },
+
+  brunoLightCore: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: "#4169E1",
     shadowColor: "#4169E1",
     shadowOffset: {
       width: 0,
       height: 0,
     },
-    shadowOpacity: 0.22,
-    shadowRadius: 8,
-
-    elevation: 2,
-  },
-
-  brunoLightCore: {
-    width: 9,
-    height: 9,
-    borderRadius: 4.5,
-    backgroundColor: "#4169E1",
+    shadowOpacity: 0.55,
+    shadowRadius: 12,
+    elevation: 4,
   },
 
   brunoMenu: {
