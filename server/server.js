@@ -22,9 +22,18 @@ app.use(cors());
 app.use(express.json());
 
 const BRUNO_MODELS = [
-  "gemini-3.6-flash",
-  "gemini-3.5-flash-lite",
-  "gemini-3.5-flash",
+  {
+    model: "gemini-3.5-flash-lite",
+    delay: 0,
+  },
+  {
+    model: "gemini-3.6-flash",
+    delay: 650,
+  },
+  {
+    model: "gemini-3.5-flash",
+    delay: 1550,
+  },
 ];
 
 function isRetryableError(error) {
@@ -37,60 +46,65 @@ function isRetryableError(error) {
   );
 }
 
-async function askBruno(message) {
-  let lastError = null;
-
-  for (const model of BRUNO_MODELS) {
-    try {
-      console.log(`🚪 Bruno tocando: ${model}`);
-
-      const response = await ai.models.generateContent({
-        model,
-
-        contents: [
-          {
-            role: "user",
-            parts: [
-              {
-                text: message,
-              },
-            ],
-          },
-        ],
-
-        config: {
-          systemInstruction: brunoIdentity,
-        },
-      });
-
-      const reply = response.text?.trim();
-
-      if (!reply) {
-        throw new Error("El modelo respondió sin texto.");
-      }
-
-      console.log(`✅ Respondió: ${model}`);
-
-      return {
-        reply,
-        model,
-      };
-    } catch (error) {
-      lastError = error;
-
-      console.log(
-        `⚠️ ${model} no respondió. Status: ${error?.status ?? "desconocido"}`,
-      );
-
-      if (!isRetryableError(error)) {
-        throw error;
-      }
-
-      console.log("➡️ Probando la siguiente puerta...");
-    }
+async function askModel(model, history, delay = 0) {
+  if (delay > 0) {
+    await new Promise((resolve) => setTimeout(resolve, delay));
   }
 
-  throw lastError ?? new Error("Ningún modelo respondió.");
+  console.log(`🚪 Bruno tocando: ${model}`);
+
+  const contents = history.map((item) => ({
+    role: item.sender === "bruno" ? "model" : "user",
+    parts: [
+      {
+        text: item.text,
+      },
+    ],
+  }));
+
+  try {
+    const response = await ai.models.generateContent({
+      model,
+      contents,
+      config: {
+        systemInstruction: brunoIdentity,
+      },
+    });
+
+    const reply = response.text?.trim();
+
+    if (!reply) {
+      throw new Error("El modelo respondió sin texto.");
+    }
+
+    console.log(`✅ Respondió: ${model}`);
+
+    return {
+      reply,
+      model,
+    };
+  } catch (error) {
+    console.log(`⚠️ ${model} falló. Status: ${error?.status ?? "desconocido"}`);
+
+    throw error;
+  }
+}
+async function askBruno(history) {
+  const attempts = BRUNO_MODELS.map(({ model, delay }) =>
+    askModel(model, history, delay),
+  );
+
+  try {
+    const result = await Promise.any(attempts);
+
+    console.log(`🏁 Ganó: ${result.model}`);
+
+    return result;
+  } catch (error) {
+    console.error("❌ Todas las puertas fallaron.");
+
+    throw error;
+  }
 }
 
 app.get("/", (req, res) => {
@@ -102,15 +116,15 @@ app.get("/", (req, res) => {
 
 app.post("/api/chat", async (req, res) => {
   try {
-    const { message } = req.body;
+    const { history } = req.body;
 
-    if (!message || typeof message !== "string" || !message.trim()) {
+    if (!Array.isArray(history) || history.length === 0) {
       return res.status(400).json({
-        error: "El mensaje está vacío.",
+        error: "La conversación está vacía.",
       });
     }
 
-    const result = await askBruno(message.trim());
+    const result = await askBruno(history);
 
     return res.json({
       reply: result.reply,
@@ -122,6 +136,64 @@ app.post("/api/chat", async (req, res) => {
       error:
         "Bruno está teniendo un poco de dificultad para responder. Inténtalo de nuevo en un momento.",
     });
+  }
+});
+app.post("/api/chat-stream", async (req, res) => {
+  try {
+    const { history } = req.body;
+
+    if (!Array.isArray(history) || history.length === 0) {
+      return res.status(400).json({
+        error: "La conversación está vacía.",
+      });
+    }
+
+    const contents = history.map((item) => ({
+      role: item.sender === "bruno" ? "model" : "user",
+      parts: [
+        {
+          text: item.text,
+        },
+      ],
+    }));
+
+    res.setHeader("Content-Type", "text/plain; charset=utf-8");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+
+    res.flushHeaders();
+
+    console.log("🌊 Bruno iniciando streaming...");
+
+    const stream = await ai.models.generateContentStream({
+      model: "gemini-3.5-flash-lite",
+      contents,
+      config: {
+        systemInstruction: brunoIdentity,
+      },
+    });
+
+    for await (const chunk of stream) {
+      const text = chunk.text;
+
+      if (text) {
+        res.write(text);
+      }
+    }
+
+    console.log("✅ Streaming terminado.");
+
+    res.end();
+  } catch (error) {
+    console.error("❌ Error en streaming:", error);
+
+    if (!res.headersSent) {
+      return res.status(503).json({
+        error: "Bruno tuvo dificultad para responder.",
+      });
+    }
+
+    res.end();
   }
 });
 

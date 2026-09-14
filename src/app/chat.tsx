@@ -1,4 +1,5 @@
 import { router } from "expo-router";
+import { fetch } from "expo/fetch";
 import { useEffect, useRef, useState } from "react";
 import {
   Animated,
@@ -29,6 +30,8 @@ export default function ChatScreen() {
 
   const menuAnimation = useRef(new Animated.Value(0)).current;
   const thinkingAnimation = useRef(new Animated.Value(0)).current;
+  const flatListRef = useRef<FlatList<Message>>(null);
+
   useEffect(() => {
     if (isThinking) {
       const breathing = Animated.loop(
@@ -102,36 +105,103 @@ export default function ChatScreen() {
       sender: "user",
     };
 
-    setMessages((current) => [...current, newMessage]);
-    setMessage("");
+    const conversation = [...messages, newMessage];
 
-    // Bruno empieza a pensar
+    setMessages(conversation);
+    setMessage("");
     setIsThinking(true);
 
     try {
-      const response = await fetch("http://192.168.1.74:3000/api/chat", {
+      const brunoId = `${Date.now()}-bruno`;
+
+      const response = await fetch("http://192.168.1.74:3000/api/chat-stream", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          message: cleanMessage,
+          history: conversation,
         }),
       });
 
-      const data = await response.json();
-
       if (!response.ok) {
-        throw new Error(data?.error || "Error al hablar con Bruno.");
+        throw new Error("Error al hablar con Bruno.");
       }
 
-      const brunoMessage: Message = {
-        id: `${Date.now()}-bruno`,
-        text: data.reply,
-        sender: "bruno",
-      };
+      const reader = response.body?.getReader();
 
-      setMessages((current) => [...current, brunoMessage]);
+      if (!reader) {
+        throw new Error("No se pudo iniciar el streaming.");
+      }
+
+      const decoder = new TextDecoder();
+
+      let fullText = "";
+      let brunoMessageCreated = false;
+
+      while (true) {
+        const { done, value } = await reader.read();
+
+        if (done) break;
+
+        const chunk = decoder.decode(value, {
+          stream: true,
+        });
+
+        if (!chunk) continue;
+
+        fullText += chunk;
+
+        if (!brunoMessageCreated) {
+          brunoMessageCreated = true;
+
+          const brunoMessage: Message = {
+            id: brunoId,
+            text: fullText,
+            sender: "bruno",
+          };
+
+          setMessages((current) => [...current, brunoMessage]);
+        } else {
+          setMessages((current) =>
+            current.map((item) =>
+              item.id === brunoId
+                ? {
+                    ...item,
+                    text: fullText,
+                  }
+                : item,
+            ),
+          );
+        }
+      }
+
+      const finalChunk = decoder.decode();
+
+      if (finalChunk) {
+        fullText += finalChunk;
+
+        setMessages((current) =>
+          current.map((item) =>
+            item.id === brunoId
+              ? {
+                  ...item,
+                  text: fullText,
+                }
+              : item,
+          ),
+        );
+      }
+
+      if (!brunoMessageCreated && fullText.trim()) {
+        const brunoMessage: Message = {
+          id: brunoId,
+          text: fullText,
+          sender: "bruno",
+        };
+
+        setMessages((current) => [...current, brunoMessage]);
+      }
     } catch (error) {
       console.log("Error al hablar con Bruno:", error);
 
@@ -143,7 +213,6 @@ export default function ChatScreen() {
 
       setMessages((current) => [...current, errorMessage]);
     } finally {
-      // Bruno terminó de pensar
       setIsThinking(false);
     }
   };
@@ -266,20 +335,27 @@ export default function ChatScreen() {
         </View>
 
         <FlatList
+          ref={flatListRef}
           data={messages}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.messages}
           keyboardShouldPersistTaps="handled"
-          renderItem={({ item }) => (
-            <View
-              style={[
-                styles.bubble,
-                item.sender === "user" ? styles.userBubble : styles.brunoBubble,
-              ]}
-            >
-              <Text style={styles.messageText}>{item.text}</Text>
-            </View>
-          )}
+          onContentSizeChange={() => {
+            setTimeout(() => {
+              flatListRef.current?.scrollToEnd({ animated: true });
+            }, 120);
+          }}
+          renderItem={({ item }) =>
+            item.sender === "user" ? (
+              <View style={[styles.bubble, styles.userBubble]}>
+                <Text style={styles.messageText}>{item.text}</Text>
+              </View>
+            ) : (
+              <View style={styles.brunoMessage}>
+                <Text style={styles.messageText}>{item.text}</Text>
+              </View>
+            )
+          }
         />
 
         <View style={styles.inputArea}>
@@ -426,6 +502,7 @@ const styles = StyleSheet.create({
 
   userBubble: {
     alignSelf: "flex-end",
+    maxWidth: "78%",
     backgroundColor: "#E4EEFA",
   },
 
@@ -493,5 +570,13 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontSize: 25,
     fontWeight: "700",
+  },
+
+  brunoMessage: {
+    alignSelf: "stretch",
+    width: "100%",
+    paddingHorizontal: 8,
+    paddingVertical: 14,
+    marginVertical: 4,
   },
 });
