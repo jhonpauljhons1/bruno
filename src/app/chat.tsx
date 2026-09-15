@@ -30,6 +30,9 @@ export default function ChatScreen() {
 
   const menuAnimation = useRef(new Animated.Value(0)).current;
   const thinkingAnimation = useRef(new Animated.Value(0)).current;
+  const wave1 = useRef(new Animated.Value(0)).current;
+  const wave2 = useRef(new Animated.Value(0)).current;
+  const wave3 = useRef(new Animated.Value(0)).current;
   const flatListRef = useRef<FlatList<Message>>(null);
 
   useEffect(() => {
@@ -59,6 +62,47 @@ export default function ChatScreen() {
     thinkingAnimation.stopAnimation();
     thinkingAnimation.setValue(0);
   }, [isThinking, thinkingAnimation]);
+
+  useEffect(() => {
+    if (!isThinking) {
+      wave1.setValue(0);
+      wave2.setValue(0);
+      wave3.setValue(0);
+      return;
+    }
+
+    const animateWave = (wave: Animated.Value, delay: number) =>
+      Animated.sequence([
+        Animated.delay(delay),
+        Animated.timing(wave, {
+          toValue: 1,
+          duration: 1500,
+          useNativeDriver: true,
+        }),
+        Animated.timing(wave, {
+          toValue: 0,
+          duration: 0,
+          useNativeDriver: true,
+        }),
+      ]);
+
+    const waterWaves = Animated.loop(
+      Animated.parallel([
+        animateWave(wave1, 0),
+        animateWave(wave2, 500),
+        animateWave(wave3, 1000),
+      ]),
+    );
+
+    waterWaves.start();
+
+    return () => {
+      waterWaves.stop();
+      wave1.setValue(0);
+      wave2.setValue(0);
+      wave3.setValue(0);
+    };
+  }, [isThinking, wave1, wave2, wave3]);
 
   const handleBrunoLightPress = () => {
     if (menuVisible) {
@@ -111,6 +155,9 @@ export default function ChatScreen() {
     setMessage("");
     setIsThinking(true);
 
+    const thinkingStartedAt = Date.now();
+    const MIN_THINKING_TIME = 3000;
+
     try {
       const brunoId = `${Date.now()}-bruno`;
 
@@ -138,6 +185,7 @@ export default function ChatScreen() {
 
       let fullText = "";
       let brunoMessageCreated = false;
+      let displayedLength = 0;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -153,26 +201,44 @@ export default function ChatScreen() {
         fullText += chunk;
 
         if (!brunoMessageCreated) {
+          const elapsed = Date.now() - thinkingStartedAt;
+          const remaining = MIN_THINKING_TIME - elapsed;
+
+          if (remaining > 0) {
+            await new Promise((resolve) => setTimeout(resolve, remaining));
+          }
+
+          setIsThinking(false);
           brunoMessageCreated = true;
 
           const brunoMessage: Message = {
             id: brunoId,
-            text: fullText,
+            text: "",
             sender: "bruno",
           };
 
           setMessages((current) => [...current, brunoMessage]);
-        } else {
+        }
+
+        const targetText = fullText;
+
+        for (let i = displayedLength + 1; i <= targetText.length; i++) {
+          const visibleText = targetText.slice(0, i);
+
           setMessages((current) =>
             current.map((item) =>
               item.id === brunoId
                 ? {
                     ...item,
-                    text: fullText,
+                    text: visibleText,
                   }
                 : item,
             ),
           );
+
+          displayedLength = i;
+
+          await new Promise((resolve) => setTimeout(resolve, 18));
         }
       }
 
@@ -345,6 +411,34 @@ export default function ChatScreen() {
               flatListRef.current?.scrollToEnd({ animated: true });
             }, 120);
           }}
+          ListFooterComponent={
+            isThinking ? (
+              <View style={styles.thinkingIndicator}>
+                {[wave1, wave2, wave3].map((wave, index) => (
+                  <Animated.View
+                    key={index}
+                    style={[
+                      styles.thinkingWave,
+                      {
+                        opacity: wave.interpolate({
+                          inputRange: [0, 0.25, 0.65, 1],
+                          outputRange: [0, 0.55, 0.25, 0],
+                        }),
+                        transform: [
+                          {
+                            scale: wave.interpolate({
+                              inputRange: [0, 1],
+                              outputRange: [0.15, 1.8],
+                            }),
+                          },
+                        ],
+                      },
+                    ]}
+                  />
+                ))}
+              </View>
+            ) : null
+          }
           renderItem={({ item }) =>
             item.sender === "user" ? (
               <View style={[styles.bubble, styles.userBubble]}>
@@ -578,5 +672,30 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 14,
     marginVertical: 4,
+  },
+  thinkingIndicator: {
+    width: 34,
+    height: 34,
+    marginLeft: 8,
+    marginTop: 8,
+    marginBottom: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  thinkingWave: {
+    position: "absolute",
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: "#4169E1",
+  },
+
+  thinkingCore: {
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+    backgroundColor: "#4169E1",
   },
 });
