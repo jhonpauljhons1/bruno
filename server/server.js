@@ -68,6 +68,11 @@ async function askModel(model, history, delay = 0) {
       contents,
       config: {
         systemInstruction: brunoIdentity,
+        tools: [
+          {
+            googleSearch: {},
+          },
+        ],
       },
     });
 
@@ -164,16 +169,41 @@ app.post("/api/chat-stream", async (req, res) => {
     res.flushHeaders();
 
     console.log("🌊 Bruno iniciando streaming...");
+    const currentDate = new Intl.DateTimeFormat("es-MX", {
+      timeZone: "America/Mazatlan",
+      dateStyle: "full",
+    }).format(new Date());
+
+    const currentSystemInstruction = `${brunoIdentity}
+
+CONTEXTO TEMPORAL ACTUAL:
+Hoy es ${currentDate}.
+Usa esta fecha como la fecha actual de la conversación.
+`;
 
     const stream = await ai.models.generateContentStream({
       model: "gemini-3.5-flash-lite",
       contents,
       config: {
-        systemInstruction: brunoIdentity,
+        systemInstruction: currentSystemInstruction,
+        tools: [
+          {
+            googleSearch: {},
+          },
+        ],
       },
     });
 
+    let searchedTheWeb = false;
+
     for await (const chunk of stream) {
+      const groundingMetadata = chunk.candidates?.[0]?.groundingMetadata;
+
+      if (groundingMetadata && !searchedTheWeb) {
+        searchedTheWeb = true;
+        console.log("🌐 Bruno escarbó en el patio del vecino :)");
+      }
+
       const text = chunk.text;
 
       if (text) {

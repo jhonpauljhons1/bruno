@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   Animated,
   FlatList,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   StyleSheet,
@@ -142,6 +143,7 @@ export default function ChatScreen() {
     const cleanMessage = message.trim();
 
     if (!cleanMessage) return;
+    Keyboard.dismiss();
 
     const newMessage: Message = {
       id: Date.now().toString(),
@@ -407,9 +409,11 @@ export default function ChatScreen() {
           contentContainerStyle={styles.messages}
           keyboardShouldPersistTaps="handled"
           onContentSizeChange={() => {
-            setTimeout(() => {
-              flatListRef.current?.scrollToEnd({ animated: true });
-            }, 120);
+            if (isThinking) {
+              setTimeout(() => {
+                flatListRef.current?.scrollToEnd({ animated: true });
+              }, 120);
+            }
           }}
           ListFooterComponent={
             isThinking ? (
