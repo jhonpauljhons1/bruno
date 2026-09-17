@@ -21,19 +21,38 @@ type Message = {
   id: string;
   text: string;
   sender: "user" | "bruno";
+  previousText?: string;
 };
+function BrunoText({
+  text,
+  previousText = "",
+}: {
+  text: string;
+  previousText?: string;
+}) {
+  const newText = text.slice(previousText.length);
+
+  return (
+    <Text style={styles.messageText}>
+      {previousText}
+      {newText}
+    </Text>
+  );
+}
 
 export default function ChatScreen() {
   const [message, setMessage] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
   const [menuVisible, setMenuVisible] = useState(false);
   const [isThinking, setIsThinking] = useState(false);
+  const [isResponding, setIsResponding] = useState(false);
 
   const menuAnimation = useRef(new Animated.Value(0)).current;
   const thinkingAnimation = useRef(new Animated.Value(0)).current;
   const wave1 = useRef(new Animated.Value(0)).current;
   const wave2 = useRef(new Animated.Value(0)).current;
   const wave3 = useRef(new Animated.Value(0)).current;
+
   const flatListRef = useRef<FlatList<Message>>(null);
 
   useEffect(() => {
@@ -156,6 +175,7 @@ export default function ChatScreen() {
     setMessages(conversation);
     setMessage("");
     setIsThinking(true);
+    setIsResponding(true);
 
     const thinkingStartedAt = Date.now();
     const MIN_THINKING_TIME = 3000;
@@ -223,24 +243,30 @@ export default function ChatScreen() {
         }
 
         const targetText = fullText;
+        const pendingText = targetText.slice(displayedLength);
+        const words = pendingText.match(/\S+\s*/g) ?? [];
 
-        for (let i = displayedLength + 1; i <= targetText.length; i++) {
-          const visibleText = targetText.slice(0, i);
+        let visibleText = targetText.slice(0, displayedLength);
+
+        for (const word of words) {
+          const previousText = visibleText;
+
+          visibleText += word;
 
           setMessages((current) =>
             current.map((item) =>
               item.id === brunoId
                 ? {
                     ...item,
+                    previousText,
                     text: visibleText,
                   }
                 : item,
             ),
           );
+          displayedLength = visibleText.length;
 
-          displayedLength = i;
-
-          await new Promise((resolve) => setTimeout(resolve, 18));
+          await new Promise((resolve) => setTimeout(resolve, 55));
         }
       }
 
@@ -282,6 +308,7 @@ export default function ChatScreen() {
       setMessages((current) => [...current, errorMessage]);
     } finally {
       setIsThinking(false);
+      setIsResponding(false);
     }
   };
 
@@ -409,7 +436,7 @@ export default function ChatScreen() {
           contentContainerStyle={styles.messages}
           keyboardShouldPersistTaps="handled"
           onContentSizeChange={() => {
-            if (isThinking) {
+            if (isResponding) {
               setTimeout(() => {
                 flatListRef.current?.scrollToEnd({ animated: true });
               }, 120);
@@ -450,7 +477,7 @@ export default function ChatScreen() {
               </View>
             ) : (
               <View style={styles.brunoMessage}>
-                <Text style={styles.messageText}>{item.text}</Text>
+                <BrunoText text={item.text} previousText={item.previousText} />
               </View>
             )
           }

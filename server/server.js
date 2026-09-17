@@ -186,11 +186,11 @@ Usa esta fecha como la fecha actual de la conversación.
       contents,
       config: {
         systemInstruction: currentSystemInstruction,
-        tools: [
-          {
-            googleSearch: {},
-          },
-        ],
+        // tools: [
+        //   {
+        //     googleSearch: {},
+        //   },
+        // ],
       },
     });
 
@@ -228,5 +228,5 @@ Usa esta fecha como la fecha actual de la conversación.
 });
 
 app.listen(PORT, "0.0.0.0", () => {
-  console.log(`🔵 Bruno server escuchando en puerto ${PORT}`);
+  console.log(`🔵 Bruno inclinando su cabeza en puerto ${PORT}`);
 });
