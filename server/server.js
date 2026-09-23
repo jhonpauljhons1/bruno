@@ -1,11 +1,41 @@
 import "dotenv/config";
 
 import { GoogleGenAI } from "@google/genai";
+import { createClient } from "@supabase/supabase-js";
 import cors from "cors";
 import express from "express";
+import ws from "ws";
 
 import brunoIdentity from "./config/brunoIdentity.js";
 
+const supabaseAdmin = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY,
+  {
+    realtime: {
+      transport: ws,
+    },
+  },
+);
+async function getBrunoMemory(userId) {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from("bruno_memory")
+      .select("memory")
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    if (error) {
+      console.log("⚠️ Error leyendo memoria de Bruno:", error.message);
+      return "";
+    }
+
+    return data?.memory ?? "";
+  } catch (error) {
+    console.log("⚠️ No se pudo leer la memoria de Bruno:", error?.message);
+    return "";
+  }
+}
 const app = express();
 const PORT = 3000;
 
@@ -111,7 +141,70 @@ async function askBruno(history) {
     throw error;
   }
 }
+async function detectEmotion(history) {
+  try {
+    const recentHistory = history
+      .slice(-8)
+      .map((item) => {
+        const speaker = item.sender === "bruno" ? "Bruno" : "Usuario";
+        return `${speaker}: ${item.text}`;
+      })
+      .join("\n");
 
+    const response = await ai.models.generateContent({
+      model: "gemini-3.5-flash-lite",
+      contents: `
+Analiza el estado emocional predominante del USUARIO basándote en la conversación reciente.
+
+No analices la emoción de Bruno.
+No busques solamente palabras emocionales explícitas.
+Interpreta el significado, tono y contexto de lo que el usuario está expresando.
+
+El usuario no necesita decir directamente "estoy triste", "estoy feliz" o "estoy enojado".
+Puedes inferir una emoción cuando el contexto la sugiera claramente.
+
+Debes responder con UNA sola palabra de esta lista:
+
+neutral
+calma
+alegria
+tristeza
+ansiedad
+enojo
+
+Reglas:
+- No diagnostiques estados psicológicos ni condiciones médicas.
+- Si varias emociones aparecen, elige la predominante en el contexto reciente.
+- Da mayor importancia a los mensajes más recientes del usuario.
+- Si no existe evidencia suficiente para identificar una emoción, responde neutral.
+- No expliques tu respuesta.
+
+CONVERSACIÓN RECIENTE:
+
+${recentHistory}
+  `,
+      config: {
+        temperature: 0,
+      },
+    });
+
+    const emotion = response.text?.trim().toLowerCase();
+
+    const validEmotions = [
+      "neutral",
+      "calma",
+      "alegria",
+      "tristeza",
+      "ansiedad",
+      "enojo",
+    ];
+
+    return validEmotions.includes(emotion) ? emotion : "neutral";
+  } catch (error) {
+    console.log("⚠️ No se pudo detectar emoción:", error?.message);
+    return "neutral";
+  }
+}
 app.get("/", (req, res) => {
   res.json({
     ok: true,
@@ -140,6 +233,31 @@ app.post("/api/chat", async (req, res) => {
     return res.status(503).json({
       error:
         "Bruno está teniendo un poco de dificultad para responder. Inténtalo de nuevo en un momento.",
+    });
+  }
+});
+app.post("/api/emotion", async (req, res) => {
+  try {
+    const { history } = req.body;
+
+    if (!Array.isArray(history) || history.length === 0) {
+      return res.status(400).json({
+        emotion: "neutral",
+      });
+    }
+
+    const emotion = await detectEmotion(history);
+
+    console.log(`🎨 Emoción detectada: ${emotion}`);
+
+    return res.json({
+      emotion,
+    });
+  } catch (error) {
+    console.error("❌ Error detectando emoción:", error);
+
+    return res.json({
+      emotion: "neutral",
     });
   }
 });

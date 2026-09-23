@@ -21,24 +21,18 @@ type Message = {
   id: string;
   text: string;
   sender: "user" | "bruno";
-  previousText?: string;
 };
-function BrunoText({
-  text,
-  previousText = "",
-}: {
-  text: string;
-  previousText?: string;
-}) {
-  const newText = text.slice(previousText.length);
-
-  return (
-    <Text style={styles.messageText}>
-      {previousText}
-      {newText}
-    </Text>
-  );
+function BrunoText({ text }: { text: string }) {
+  return <Text style={styles.messageText}>{text}</Text>;
 }
+const EMOTION_COLORS = {
+  neutral: "#4169E1",
+  calma: "#64A8E8",
+  alegria: "#9EDBC8",
+  tristeza: "#5367B7",
+  ansiedad: "#7667C9",
+  enojo: "#C76878",
+};
 
 export default function ChatScreen() {
   const [message, setMessage] = useState("");
@@ -46,9 +40,16 @@ export default function ChatScreen() {
   const [menuVisible, setMenuVisible] = useState(false);
   const [isThinking, setIsThinking] = useState(false);
   const [isResponding, setIsResponding] = useState(false);
+  const [emotion, setEmotion] = useState("neutral");
 
   const menuAnimation = useRef(new Animated.Value(0)).current;
-  const thinkingAnimation = useRef(new Animated.Value(0)).current;
+  const calmBreath = useRef(new Animated.Value(0)).current;
+  const activeBreath = useRef(new Animated.Value(0)).current;
+  const activityAnimation = useRef(new Animated.Value(0)).current;
+  const colorTransition = useRef(new Animated.Value(1)).current;
+  const previousEmotionRef = useRef("neutral");
+  const [fromEmotion, setFromEmotion] = useState("neutral");
+  const [toEmotion, setToEmotion] = useState("neutral");
   const wave1 = useRef(new Animated.Value(0)).current;
   const wave2 = useRef(new Animated.Value(0)).current;
   const wave3 = useRef(new Animated.Value(0)).current;
@@ -56,32 +57,69 @@ export default function ChatScreen() {
   const flatListRef = useRef<FlatList<Message>>(null);
 
   useEffect(() => {
-    if (isThinking) {
-      const breathing = Animated.loop(
-        Animated.sequence([
-          Animated.timing(thinkingAnimation, {
-            toValue: 1,
-            duration: 900,
-            useNativeDriver: true,
-          }),
-          Animated.timing(thinkingAnimation, {
-            toValue: 0,
-            duration: 900,
-            useNativeDriver: true,
-          }),
-        ]),
-      );
+    const calmLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(calmBreath, {
+          toValue: 1,
+          duration: 2800,
+          useNativeDriver: true,
+        }),
+        Animated.timing(calmBreath, {
+          toValue: 0,
+          duration: 2800,
+          useNativeDriver: true,
+        }),
+      ]),
+    );
 
-      breathing.start();
+    const activeLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(activeBreath, {
+          toValue: 1,
+          duration: 900,
+          useNativeDriver: true,
+        }),
+        Animated.timing(activeBreath, {
+          toValue: 0,
+          duration: 900,
+          useNativeDriver: true,
+        }),
+      ]),
+    );
 
-      return () => {
-        breathing.stop();
-      };
-    }
+    calmLoop.start();
+    activeLoop.start();
 
-    thinkingAnimation.stopAnimation();
-    thinkingAnimation.setValue(0);
-  }, [isThinking, thinkingAnimation]);
+    return () => {
+      calmLoop.stop();
+      activeLoop.stop();
+    };
+  }, [calmBreath, activeBreath]);
+
+  useEffect(() => {
+    Animated.timing(activityAnimation, {
+      toValue: isThinking || isResponding ? 1 : 0,
+      duration: isThinking || isResponding ? 650 : 1800,
+      useNativeDriver: true,
+    }).start();
+  }, [isThinking, isResponding, activityAnimation]);
+
+  useEffect(() => {
+    if (emotion === previousEmotionRef.current) return;
+
+    setFromEmotion(previousEmotionRef.current);
+    setToEmotion(emotion);
+    previousEmotionRef.current = emotion;
+
+    colorTransition.stopAnimation();
+    colorTransition.setValue(0);
+
+    Animated.timing(colorTransition, {
+      toValue: 1,
+      duration: 1800,
+      useNativeDriver: true,
+    }).start();
+  }, [emotion, colorTransition]);
 
   useEffect(() => {
     if (!isThinking) {
@@ -163,6 +201,14 @@ export default function ChatScreen() {
 
     if (!cleanMessage) return;
     Keyboard.dismiss();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      console.log("⚠️ No se encontró el usuario para la memoria de Bruno.");
+      return;
+    }
 
     const newMessage: Message = {
       id: Date.now().toString(),
@@ -176,6 +222,25 @@ export default function ChatScreen() {
     setMessage("");
     setIsThinking(true);
     setIsResponding(true);
+    fetch("http://192.168.1.74:3000/api/emotion", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        history: conversation,
+      }),
+    })
+      .then((response) => response.json())
+      .then((data) => {
+        if (data.emotion) {
+          setEmotion(data.emotion);
+          console.log("🎨 Emoción recibida:", data.emotion);
+        }
+      })
+      .catch((error) => {
+        console.log("⚠️ Error detectando emoción:", error);
+      });
 
     const thinkingStartedAt = Date.now();
     const MIN_THINKING_TIME = 3000;
@@ -249,8 +314,6 @@ export default function ChatScreen() {
         let visibleText = targetText.slice(0, displayedLength);
 
         for (const word of words) {
-          const previousText = visibleText;
-
           visibleText += word;
 
           setMessages((current) =>
@@ -258,7 +321,6 @@ export default function ChatScreen() {
               item.id === brunoId
                 ? {
                     ...item,
-                    previousText,
                     text: visibleText,
                   }
                 : item,
@@ -330,61 +392,240 @@ export default function ChatScreen() {
               style={[
                 styles.brunoHalo,
                 {
-                  opacity: isThinking
-                    ? thinkingAnimation.interpolate({
+                  opacity: Animated.add(
+                    calmBreath.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [0.56, 0.68],
+                    }),
+                    Animated.multiply(
+                      activityAnimation,
+                      activeBreath.interpolate({
                         inputRange: [0, 1],
-                        outputRange: [0.45, 1],
-                      })
-                    : 0.55,
-
+                        outputRange: [-0.08, 0.32],
+                      }),
+                    ),
+                  ),
                   transform: [
                     {
-                      scaleX: isThinking
-                        ? thinkingAnimation.interpolate({
+                      scaleX: Animated.add(
+                        calmBreath.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [0.97, 1.05],
+                        }),
+                        Animated.multiply(
+                          activityAnimation,
+                          activeBreath.interpolate({
                             inputRange: [0, 1],
-                            outputRange: [0.9, 1.12],
-                          })
-                        : 1,
+                            outputRange: [0.03, 0.6],
+                          }),
+                        ),
+                      ),
                     },
                     {
-                      scaleY: isThinking
-                        ? thinkingAnimation.interpolate({
+                      scaleY: Animated.add(
+                        calmBreath.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [0.97, 1.03],
+                        }),
+                        Animated.multiply(
+                          activityAnimation,
+                          activeBreath.interpolate({
                             inputRange: [0, 1],
-                            outputRange: [0.92, 1.05],
-                          })
-                        : 1,
+                            outputRange: [-0.05, 0.02],
+                          }),
+                        ),
+                      ),
                     },
                   ],
                 },
               ]}
             >
-              <Svg width="100%" height="100%" viewBox="0 0 120 30">
-                <Defs>
-                  <RadialGradient
-                    id="brunoGlow"
-                    cx="50%"
-                    cy="50%"
-                    rx="50%"
-                    ry="50%"
-                  >
-                    <Stop offset="0%" stopColor="#4169E1" stopOpacity="0.34" />
-                    <Stop offset="35%" stopColor="#4169E1" stopOpacity="0.18" />
-                    <Stop offset="70%" stopColor="#4169E1" stopOpacity="0.07" />
-                    <Stop offset="100%" stopColor="#4169E1" stopOpacity="0" />
-                  </RadialGradient>
-                </Defs>
+              <View style={StyleSheet.absoluteFill}>
+                <Animated.View
+                  style={[
+                    StyleSheet.absoluteFill,
+                    {
+                      opacity: colorTransition.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [1, 0],
+                      }),
+                    },
+                  ]}
+                >
+                  <Svg width="100%" height="100%" viewBox="0 0 120 30">
+                    <Defs>
+                      <RadialGradient
+                        id="brunoGlowFrom"
+                        cx="50%"
+                        cy="50%"
+                        rx="50%"
+                        ry="50%"
+                      >
+                        <Stop
+                          offset="0%"
+                          stopColor={
+                            EMOTION_COLORS[
+                              fromEmotion as keyof typeof EMOTION_COLORS
+                            ]
+                          }
+                          stopOpacity="0.34"
+                        />
+                        <Stop
+                          offset="35%"
+                          stopColor={
+                            EMOTION_COLORS[
+                              fromEmotion as keyof typeof EMOTION_COLORS
+                            ]
+                          }
+                          stopOpacity="0.18"
+                        />
+                        <Stop
+                          offset="70%"
+                          stopColor={
+                            EMOTION_COLORS[
+                              fromEmotion as keyof typeof EMOTION_COLORS
+                            ]
+                          }
+                          stopOpacity="0.07"
+                        />
+                        <Stop
+                          offset="100%"
+                          stopColor={
+                            EMOTION_COLORS[
+                              fromEmotion as keyof typeof EMOTION_COLORS
+                            ]
+                          }
+                          stopOpacity="0"
+                        />
+                      </RadialGradient>
+                    </Defs>
+                    <Ellipse
+                      cx="60"
+                      cy="15"
+                      rx="58"
+                      ry="13"
+                      fill="url(#brunoGlowFrom)"
+                    />
+                  </Svg>
+                </Animated.View>
 
-                <Ellipse
-                  cx="60"
-                  cy="15"
-                  rx="58"
-                  ry="13"
-                  fill="url(#brunoGlow)"
-                />
-              </Svg>
+                <Animated.View
+                  style={[
+                    StyleSheet.absoluteFill,
+                    { opacity: colorTransition },
+                  ]}
+                >
+                  <Svg width="100%" height="100%" viewBox="0 0 120 30">
+                    <Defs>
+                      <RadialGradient
+                        id="brunoGlowTo"
+                        cx="50%"
+                        cy="50%"
+                        rx="50%"
+                        ry="50%"
+                      >
+                        <Stop
+                          offset="0%"
+                          stopColor={
+                            EMOTION_COLORS[
+                              toEmotion as keyof typeof EMOTION_COLORS
+                            ]
+                          }
+                          stopOpacity="0.34"
+                        />
+                        <Stop
+                          offset="35%"
+                          stopColor={
+                            EMOTION_COLORS[
+                              toEmotion as keyof typeof EMOTION_COLORS
+                            ]
+                          }
+                          stopOpacity="0.18"
+                        />
+                        <Stop
+                          offset="70%"
+                          stopColor={
+                            EMOTION_COLORS[
+                              toEmotion as keyof typeof EMOTION_COLORS
+                            ]
+                          }
+                          stopOpacity="0.07"
+                        />
+                        <Stop
+                          offset="100%"
+                          stopColor={
+                            EMOTION_COLORS[
+                              toEmotion as keyof typeof EMOTION_COLORS
+                            ]
+                          }
+                          stopOpacity="0"
+                        />
+                      </RadialGradient>
+                    </Defs>
+                    <Ellipse
+                      cx="60"
+                      cy="15"
+                      rx="58"
+                      ry="13"
+                      fill="url(#brunoGlowTo)"
+                    />
+                  </Svg>
+                </Animated.View>
+              </View>
             </Animated.View>
 
-            <View style={styles.brunoLightCore} />
+            <Animated.View
+              style={[
+                styles.brunoLightCore,
+                {
+                  transform: [
+                    {
+                      scale: Animated.add(
+                        calmBreath.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [0.96, 1.04],
+                        }),
+                        Animated.multiply(
+                          activityAnimation,
+                          activeBreath.interpolate({
+                            inputRange: [0, 1],
+                            outputRange: [0, 0.08],
+                          }),
+                        ),
+                      ),
+                    },
+                  ],
+                },
+              ]}
+            >
+              <Animated.View
+                style={[
+                  StyleSheet.absoluteFill,
+                  {
+                    borderRadius: 9,
+                    backgroundColor:
+                      EMOTION_COLORS[
+                        fromEmotion as keyof typeof EMOTION_COLORS
+                      ],
+                    opacity: colorTransition.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [1, 0],
+                    }),
+                  },
+                ]}
+              />
+              <Animated.View
+                style={[
+                  StyleSheet.absoluteFill,
+                  {
+                    borderRadius: 9,
+                    backgroundColor:
+                      EMOTION_COLORS[toEmotion as keyof typeof EMOTION_COLORS],
+                    opacity: colorTransition,
+                  },
+                ]}
+              />
+            </Animated.View>
           </TouchableOpacity>
 
           {menuVisible && (
@@ -477,7 +718,7 @@ export default function ChatScreen() {
               </View>
             ) : (
               <View style={styles.brunoMessage}>
-                <BrunoText text={item.text} previousText={item.previousText} />
+                <BrunoText text={item.text} />
               </View>
             )
           }
@@ -536,9 +777,9 @@ const styles = StyleSheet.create({
   },
 
   brunoLightCore: {
-    width: 16,
-    height: 16,
-    borderRadius: 8,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
     backgroundColor: "#4169E1",
     shadowColor: "#4169E1",
     shadowOffset: {
