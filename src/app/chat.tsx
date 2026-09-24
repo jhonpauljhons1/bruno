@@ -195,6 +195,66 @@ export default function ChatScreen() {
 
     router.replace("/");
   };
+  const loadActiveChat = async () => {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) return;
+
+    const { data, error } = await supabase
+      .from("bruno_active_chat")
+      .select("messages")
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    if (error) {
+      console.log("⚠️ Error cargando conversación:", error.message);
+      return;
+    }
+
+    if (Array.isArray(data?.messages)) {
+      setMessages(data.messages);
+    }
+  };
+
+  useEffect(() => {
+    loadActiveChat();
+  }, []);
+
+  const saveActiveChat = async (userId: string, chatMessages: Message[]) => {
+    const { error } = await supabase.from("bruno_active_chat").upsert(
+      {
+        user_id: userId,
+        messages: chatMessages,
+        updated_at: new Date().toISOString(),
+      },
+      {
+        onConflict: "user_id",
+      },
+    );
+
+    if (error) {
+      console.log("⚠️ Error guardando conversación:", error.message);
+    }
+  };
+  useEffect(() => {
+    if (messages.length === 0) return;
+
+    const saveTimer = setTimeout(async () => {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) return;
+
+      await saveActiveChat(user.id, messages);
+    }, 1200);
+
+    return () => {
+      clearTimeout(saveTimer);
+    };
+  }, [messages]);
 
   const sendMessage = async () => {
     const cleanMessage = message.trim();
@@ -255,6 +315,7 @@ export default function ChatScreen() {
         },
         body: JSON.stringify({
           history: conversation,
+          userId: user.id,
         }),
       });
 

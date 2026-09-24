@@ -36,6 +36,96 @@ async function getBrunoMemory(userId) {
     return "";
   }
 }
+async function saveBrunoMemory(userId, memory) {
+  try {
+    const { error } = await supabaseAdmin.from("bruno_memory").upsert(
+      {
+        user_id: userId,
+        memory,
+        updated_at: new Date().toISOString(),
+      },
+      {
+        onConflict: "user_id",
+      },
+    );
+
+    if (error) {
+      console.log("⚠️ Error guardando memoria de Bruno:", error.message);
+      return false;
+    }
+
+    return true;
+  } catch (error) {
+    console.log("⚠️ No se pudo guardar la memoria de Bruno:", error?.message);
+    return false;
+  }
+}
+async function updateBrunoMemory(userId, history) {
+  try {
+    const currentMemory = await getBrunoMemory(userId);
+
+    const recentConversation = history
+      .slice(-12)
+      .map((item) => {
+        const speaker = item.sender === "bruno" ? "Bruno" : "Usuario";
+        return `${speaker}: ${item.text}`;
+      })
+      .join("\n");
+
+    if (!recentConversation.trim()) return;
+
+    const memoryPrompt = `
+Eres el sistema de memoria de Bruno.
+
+Tu trabajo NO es responder al usuario.
+Debes decidir qué información de la conversación merece conservarse
+para que Bruno pueda recordar al usuario en conversaciones futuras.
+
+MEMORIA ACTUAL:
+${currentMemory || "(vacía)"}
+
+CONVERSACIÓN RECIENTE:
+${recentConversation}
+
+Conserva únicamente información útil a largo plazo, por ejemplo:
+- personas importantes para el usuario y su relación con ellas
+- preferencias personales relevantes
+- proyectos, objetivos o planes importantes
+- situaciones recurrentes que ayuden a entender al usuario
+- acontecimientos personales importantes
+- temas pendientes que sería natural recordar después
+
+NO guardes:
+- saludos o charla trivial
+- frases aisladas sin importancia futura
+- detalles temporales que probablemente no vuelvan a importar
+- información sobre Bruno o sobre cómo funciona el sistema
+- cada detalle de la conversación
+
+Devuelve únicamente la memoria actualizada en texto breve y claro.
+
+Si la conversación reciente no contiene nada que valga la pena recordar,
+devuelve exactamente la memoria actual sin agregar nada.
+`;
+
+    const result = await ai.models.generateContent({
+      model: "gemini-3.5-flash-lite",
+      contents: memoryPrompt,
+    });
+
+    const newMemory = result.text?.trim();
+
+    if (!newMemory || newMemory === currentMemory) {
+      return;
+    }
+
+    await saveBrunoMemory(userId, newMemory);
+
+    console.log("🧠 Memoria de Bruno actualizada.");
+  } catch (error) {
+    console.log("⚠️ Error actualizando memoria de Bruno:", error?.message);
+  }
+}
 const app = express();
 const PORT = 3000;
 
@@ -205,6 +295,7 @@ ${recentHistory}
     return "neutral";
   }
 }
+
 app.get("/", (req, res) => {
   res.json({
     ok: true,
@@ -263,7 +354,12 @@ app.post("/api/emotion", async (req, res) => {
 });
 app.post("/api/chat-stream", async (req, res) => {
   try {
-    const { history } = req.body;
+    const { history, userId } = req.body;
+    if (!userId) {
+      return res.status(400).json({
+        error: "Falta identificar al usuario.",
+      });
+    }
 
     if (!Array.isArray(history) || history.length === 0) {
       return res.status(400).json({
@@ -292,11 +388,24 @@ app.post("/api/chat-stream", async (req, res) => {
       dateStyle: "full",
     }).format(new Date());
 
+    const brunoMemory = await getBrunoMemory(userId);
+
     const currentSystemInstruction = `${brunoIdentity}
 
+MEMORIA DEL USUARIO:
+${brunoMemory || "(Todavía no hay recuerdos guardados.)"}
+
+Usa esta memoria únicamente cuando sea relevante para la conversación.
+No menciones que tienes una base de datos, memoria almacenada o un sistema de memoria.
+Recuerda la información de forma natural, como parte de tu relación con el usuario.
+No fuerces recuerdos que no tengan relación con lo que se está hablando.
+
 CONTEXTO TEMPORAL ACTUAL:
+
 Hoy es ${currentDate}.
+
 Usa esta fecha como la fecha actual de la conversación.
+
 `;
 
     const stream = await ai.models.generateContentStream({
@@ -330,6 +439,7 @@ Usa esta fecha como la fecha actual de la conversación.
     }
 
     console.log("✅ Streaming terminado.");
+    await updateBrunoMemory(userId, history);
 
     res.end();
   } catch (error) {
