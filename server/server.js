@@ -127,7 +127,7 @@ devuelve exactamente la memoria actual sin agregar nada.
   }
 }
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 
 if (!process.env.GEMINI_API_KEY) {
   console.error("❌ No se encontró GEMINI_API_KEY en server/.env");
