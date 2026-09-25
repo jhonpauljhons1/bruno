@@ -282,7 +282,7 @@ export default function ChatScreen() {
     setMessage("");
     setIsThinking(true);
     setIsResponding(true);
-    fetch("http://192.168.1.74:3000/api/emotion", {
+    fetch("https://bruno-kblm.onrender.com/api/emotion", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -308,16 +308,19 @@ export default function ChatScreen() {
     try {
       const brunoId = `${Date.now()}-bruno`;
 
-      const response = await fetch("http://192.168.1.74:3000/api/chat-stream", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
+      const response = await fetch(
+        "https://bruno-kblm.onrender.com/api/chat-stream",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            history: conversation,
+            userId: user.id,
+          }),
         },
-        body: JSON.stringify({
-          history: conversation,
-          userId: user.id,
-        }),
-      });
+      );
 
       if (!response.ok) {
         throw new Error("Error al hablar con Bruno.");
